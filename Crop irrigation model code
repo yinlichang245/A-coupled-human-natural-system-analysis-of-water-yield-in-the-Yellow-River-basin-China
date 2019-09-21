@@ -1,0 +1,294 @@
+%crop irrigation model simulation process in this paper
+% platform Matlab2012a
+[~,R]=geotiffread('D:\日降水插值\黄河流域纬度栅格\yrlaititude.tif');%先导入纬度数据
+info=geotiffinfo('D:\日降水插值\黄河流域纬度栅格\yrlaititude.tif');
+%ksz=importdata('D:\qixiang\作物提取修正的kcini校正的全部2000基于作物比例的基于scscn的ks阈值.tif');
+%filename=strcat('D:\qixiang\经过增加的作物提取修正的ks阈值.tif');
+%ksz=importdata(filename);
+ksz=importdata('I:\ks阈值\全部Ks阈值.tif');
+%gd=importdata('D:\qixiang\灌溉与雨养\全部的灌溉与水稻.tif');
+%ksz(gd==3)=1;
+
+for year=2016:2017
+    filename1=strcat('I:\基于观测值的作物物候期提取\根据生长期长度修正的',int2str(year),'开始期.tif');
+    filename2=strcat('I:\基于观测值的作物物候期提取\根据生长期长度修正的',int2str(year),'结束期.tif');
+    sog=importdata(filename1);
+    eog=importdata(filename2);
+    dzqchangdu=eog-sog+1;
+    psd=importdata(strcat('I:\Psd参数\内插的yellow_psd.tif'));
+    AW1=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s1_1000.tif');
+    AW2=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s2_1000.tif');
+    AW3=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s3_1000.tif');
+    AW4=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s4_1000.tif');
+    AW5=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s5_1000.tif');
+    AW6=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s6_1000.tif');
+    AW7=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s7_1000.tif');
+    smax_fszj=0.5*(AW1+AW2);
+    smax_fszj=double(smax_fszj);
+    s0=zeros(1099,2031);
+    if mod(year,4)==0
+        cd=366;
+    else
+        cd=365;
+    end
+        pz=double(zeros(1099,2031));
+        et=zeros(1099,2031);
+        ks_dzq=zeros(1099,2031);
+        kssum_dzq=zeros(1099,2031);
+        smax=zeros(1099,2031);
+        for n=1:cd
+            if n<10
+                filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                filename=strcat('I:\PRE\TIF\pre',int2str(year),'_00',int2str(n),'.tif');
+            else
+                if n<100
+                   filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                   filename=strcat('I:\PRE\TIF\pre',int2str(year),'_0',int2str(n),'.tif');
+                else
+                    filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                    filename=strcat('I:\PRE\TIF\pre',int2str(year),'_',int2str(n),'.tif');
+                end
+            end
+            et0=importdata(filename1);
+            pre=importdata(filename);
+            pre(pre<0)=0;
+            pre=pre.*0.1;
+            rdl=importdata(strcat('I:\基于观测的作物根系长度\基于SOS修正的new灌溉情景下修正的',int2str(year),int2str(n),'根系长度.tif'));
+            kc=importdata(strcat('I:\Day_Kc\',int2str(year),'_',int2str(n),'kc值.tif'));
+            net=importdata(strcat('I:\非生长季ET\',int2str(year),'_',int2str(n),'水分与能量限制的最小值蒸散发.tif'));
+            runoff=importdata(strcat('I:\irrigation runoff\灌溉runoff',int2str(year),'_',int2str(n),'.tif'));
+            for i=1:1099
+                for j=1:2031
+                    if sog(i,j)>0 %满足灌溉耕地才能进行下去
+                        if n<sog(i,j) || n>eog(i,j)
+                            s0(i,j)=smpanduan(s0(i,j),smax_fszj(i,j));%对土壤水分进行判断
+                            s1(i,j)=s0(i,j)+pre(i,j)-net(i,j)-runoff(i,j);
+                            s1(i,j)=smpanduan(s1(i,j),smax_fszj(i,j));%对土壤水分进行判断
+                            et(i,j)=net(i,j);
+                            ks_dzq(i,j)=0;
+                        else
+                            smax(i,j)=smaxz(AW1(i,j),AW2(i,j),AW3(i,j),AW4(i,j),AW5(i,j),AW6(i,j),AW7(i,j),rdl(i,j));%生长季了
+                            smax(i,j)=smax(i,j)*rdl(i,j)*10;%转换成根系深度了，比例乘以根系深度单位为m，乘以1000转换成mm
+                            s0(i,j)=smpanduan(s0(i,j),smax(i,j));%对土壤水分进行判断
+                            pz(i,j)=psd(i,j)+0.04.*(5-et0(i,j).*kc(i,j));
+                            ks_dzq(i,j)=s0(i,j)/((1-pz(i,j))*smax(i,j));
+                            if  ks_dzq(i,j)<=ksz(i,j)
+                                 ks_dzq(i,j)=1;
+                                 et(i,j)=kc(i,j)*et0(i,j);
+                                 s1(i,j)=smax(i,j);
+                             else
+                                ks_dzq(i,j)=kspanduan(ks_dzq(i,j));
+                                et(i,j)=kc(i,j).*ks_dzq(i,j).*et0(i,j);
+                                s0(i,j)=smpanduan(s0(i,j),smax(i,j));%对土壤水分进行判断
+                                s1(i,j)=s0(i,j)+pre(i,j)-et(i,j)-runoff(i,j);
+                                s1(i,j)=smpanduan(s1(i,j),smax(i,j));
+                            end
+                        end
+                    end
+                end
+            end
+            s0=s1;
+        end
+        irrsum=0;
+        ETSUM=0;
+        irrigation=zeros(1099,2031);
+     for n=1:cd
+            if n<10
+                filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                filename=strcat('I:\PRE\TIF\pre',int2str(year),'_00',int2str(n),'.tif');
+            else
+                if n<100
+                   filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                   filename=strcat('I:\PRE\TIF\pre',int2str(year),'_0',int2str(n),'.tif');
+                else
+                    filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                    filename=strcat('I:\PRE\TIF\pre',int2str(year),'_',int2str(n),'.tif');
+                end
+            end
+            et0=importdata(filename1);
+            pre=importdata(filename);
+            pre(pre<0)=0;
+            pre=pre.*0.1;
+            rdl=importdata(strcat('I:\基于观测的作物根系长度\基于SOS修正的new灌溉情景下修正的',int2str(year),int2str(n),'根系长度.tif'));
+            kc=importdata(strcat('I:\Day_Kc\',int2str(year),'_',int2str(n),'kc值.tif'));
+            net=importdata(strcat('I:\非生长季ET\',int2str(year),'_',int2str(n),'水分与能量限制的最小值蒸散发.tif'));
+            runoff=importdata(strcat('I:\irrigation runoff\灌溉runoff',int2str(year),'_',int2str(n),'.tif'));
+            for i=1:1099
+                for j=1:2031
+                    if sog(i,j)>0 %满足灌溉耕地才能进行下去
+                        if n<sog(i,j) || n>eog(i,j)
+                            s0(i,j)=smpanduan(s0(i,j),smax_fszj(i,j));%对土壤水分进行判断
+                            s1(i,j)=s0(i,j)+pre(i,j)-net(i,j)-runoff(i,j);
+                            s1(i,j)=smpanduan(s1(i,j),smax_fszj(i,j));%对土壤水分进行判断
+                            et(i,j)=net(i,j);
+                            ks_dzq(i,j)=0;
+                        else
+                            smax(i,j)=smaxz(AW1(i,j),AW2(i,j),AW3(i,j),AW4(i,j),AW5(i,j),AW6(i,j),AW7(i,j),rdl(i,j));%生长季了
+                            smax(i,j)=smax(i,j)*rdl(i,j)*10;%转换成根系深度了，比例乘以根系深度单位为m，乘以1000转换成mm
+                            s0(i,j)=smpanduan(s0(i,j),smax(i,j));%对土壤水分进行判断
+                            pz(i,j)=psd(i,j)+0.04.*(5-et0(i,j).*kc(i,j));
+                            ks_dzq(i,j)=s0(i,j)/((1-pz(i,j))*smax(i,j));
+                            if  ks_dzq(i,j)<=ksz(i,j)
+                                 ks_dzq(i,j)=1;
+                                 et(i,j)=kc(i,j)*et0(i,j);
+                                 s1(i,j)=smax(i,j);
+                                 irrigation(i,j)=s1(i,j)-s0(i,j);
+                             else
+                                ks_dzq(i,j)=kspanduan(ks_dzq(i,j));
+                                et(i,j)=kc(i,j).*ks_dzq(i,j).*et0(i,j);
+                                s0(i,j)=smpanduan(s0(i,j),smax(i,j));%对土壤水分进行判断
+                                s1(i,j)=s0(i,j)+pre(i,j)-et(i,j)-runoff(i,j);
+                                s1(i,j)=smpanduan(s1(i,j),smax(i,j));
+                            end
+                        end
+                    end
+                end
+            end
+            %filenameet=strcat('G:\逐日KS输出\灌溉情景Ks',int2str(year),'_',int2str(n),'.tif');
+            %geotiffwrite(filenameet,ks_dzq,R,'GeoKeyDirectoryTag',info.GeoTIFFTags.GeoKeyDirectoryTag);
+            %irrsum=irrsum+irrigation;
+            ETSUM=ETSUM+et;
+            %filenameet=strcat('D:\qixiang\result\灌溉情景\基于scscn的IRRI',int2str(year),'_',int2str(n),'.tif');
+            %geotiffwrite(filenameet,irrigation,R,'GeoKeyDirectoryTag',info.GeoTIFFTags.GeoKeyDirectoryTag);
+            s0=s1;
+     end
+           %filename1=strcat('D:\qixiang\基于作物比例的过程\result\作物提取修正的kcini校正的全部2000基于作物比例的基于scscn的总灌溉耗水量',int2str(year),'.tif');
+           %geotiffwrite(filename1,irrsum,R,'GeoKeyDirectoryTag',info.GeoTIFFTags.GeoKeyDirectoryTag);
+           filename1=strcat('I:\灌溉情景模拟ET\灌溉情景的总ET',int2str(year),'.tif');
+           geotiffwrite(filename1,ETSUM,R,'GeoKeyDirectoryTag',info.GeoTIFFTags.GeoKeyDirectoryTag);
+end
+
+%雨养情景模拟
+for year=2003:2017
+    filename1=strcat('I:\基于观测值的作物物候期提取\根据生长期长度修正的',int2str(year),'开始期.tif');
+    filename2=strcat('I:\基于观测值的作物物候期提取\根据生长期长度修正的',int2str(year),'结束期.tif');
+    sog=importdata(filename1);
+    eog=importdata(filename2);
+    dzqchangdu=eog-sog+1;
+    psd=importdata(strcat('I:\Psd参数\内插的yellow_psd.tif'));
+    AW1=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s1_1000.tif');
+    AW2=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s2_1000.tif');
+    AW3=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s3_1000.tif');
+    AW4=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s4_1000.tif');
+    AW5=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s5_1000.tif');
+    AW6=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s6_1000.tif');
+    AW7=importdata('F:\ylc\Yellow River data\黄河流域凋萎点\wwp1000\wwp_m_s7_1000.tif');
+    smax_fszj=0.5*(AW1+AW2);
+    smax_fszj=double(smax_fszj);
+    s0=zeros(1099,2031);
+    if mod(year,4)==0
+        cd=366;
+    else
+        cd=365;
+    end
+        pz=double(zeros(1099,2031));
+        et=zeros(1099,2031);
+        ks_dzq=zeros(1099,2031);
+        kssum_dzq=zeros(1099,2031);
+        smax=zeros(1099,2031);
+        for n=1:cd
+            if n<10
+                filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                filename=strcat('I:\PRE\TIF\pre',int2str(year),'_00',int2str(n),'.tif');
+            else
+                if n<100
+                   filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                   filename=strcat('I:\PRE\TIF\pre',int2str(year),'_0',int2str(n),'.tif');
+                else
+                    filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                    filename=strcat('I:\PRE\TIF\pre',int2str(year),'_',int2str(n),'.tif');
+                end
+            end
+            et0=importdata(filename1);
+            pre=importdata(filename);
+            pre(pre<0)=0;
+            pre=pre.*0.1;
+            rdl=importdata(strcat('I:\基于观测的作物根系长度\基于SOS修正的new雨养情景修正的',int2str(year),int2str(n),'根系长度.tif'));
+            kc=importdata(strcat('I:\Day_Kc\',int2str(year),'_',int2str(n),'kc值.tif'));
+            net=importdata(strcat('I:\非生长季ET\',int2str(year),'_',int2str(n),'水分与能量限制的最小值蒸散发.tif'));
+            runoff=importdata(strcat('I:\irrigation runoff\灌溉runoff',int2str(year),'_',int2str(n),'.tif'));
+            for i=1:1099
+                for j=1:2031
+                    if sog(i,j)>0 %满足灌溉耕地才能进行下去
+                        if n<sog(i,j) || n>eog(i,j)
+                            s0(i,j)=smpanduan(s0(i,j),smax_fszj(i,j));%对土壤水分进行判断
+                            s1(i,j)=s0(i,j)+pre(i,j)-net(i,j)-runoff(i,j);
+                            s1(i,j)=smpanduan(s1(i,j),smax_fszj(i,j));%对土壤水分进行判断
+                            et(i,j)=net(i,j);
+                            ks_dzq(i,j)=0;
+                        else
+                            smax(i,j)=smaxz(AW1(i,j),AW2(i,j),AW3(i,j),AW4(i,j),AW5(i,j),AW6(i,j),AW7(i,j),rdl(i,j));%生长季了
+                            smax(i,j)=smax(i,j)*rdl(i,j)*10;%转换成根系深度了，比例乘以根系深度单位为m，乘以1000转换成mm
+                            s0(i,j)=smpanduan(s0(i,j),smax(i,j));%对土壤水分进行判断
+                            pz(i,j)=psd(i,j)+0.04.*(5-et0(i,j).*kc(i,j));
+                            ks_dzq(i,j)=s0(i,j)/((1-pz(i,j))*smax(i,j));
+                            ks_dzq(i,j)=kspanduan(ks_dzq(i,j));
+                            et(i,j)=kc(i,j).*ks_dzq(i,j).*et0(i,j);
+                            s0(i,j)=smpanduan(s0(i,j),smax(i,j));%对土壤水分进行判断
+                            s1(i,j)=s0(i,j)+pre(i,j)-et(i,j)-runoff(i,j);
+                            s1(i,j)=smpanduan(s1(i,j),smax(i,j));
+                        end
+                    end
+                end
+            end
+            s0=s1;
+        end
+        irrsum=0;ETSUM=0;
+        irrigation=zeros(1099,2031);
+     for n=1:cd
+            if n<10
+                filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                filename=strcat('I:\PRE\TIF\pre',int2str(year),'_00',int2str(n),'.tif');
+            else
+                if n<100
+                   filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                   filename=strcat('I:\PRE\TIF\pre',int2str(year),'_0',int2str(n),'.tif');
+                else
+                    filename1=strcat('I:\DAY_PET\',int2str(year),'_',int2str(n),'PET.tif');
+                    filename=strcat('I:\PRE\TIF\pre',int2str(year),'_',int2str(n),'.tif');
+                end
+            end
+            et0=importdata(filename1);
+            pre=importdata(filename);
+            pre(pre<0)=0;
+            pre=pre.*0.1;
+            rdl=importdata(strcat('I:\基于观测的作物根系长度\基于SOS修正的new雨养情景修正的',int2str(year),int2str(n),'根系长度.tif'));
+            kc=importdata(strcat('I:\Day_Kc\',int2str(year),'_',int2str(n),'kc值.tif'));
+            net=importdata(strcat('I:\非生长季ET\',int2str(year),'_',int2str(n),'水分与能量限制的最小值蒸散发.tif'));
+            runoff=importdata(strcat('I:\irrigation runoff\灌溉runoff',int2str(year),'_',int2str(n),'.tif'));
+            for i=1:1099
+                for j=1:2031
+                    if sog(i,j)>0 %满足灌溉耕地才能进行下去
+                        if n<sog(i,j) || n>eog(i,j)
+                            s0(i,j)=smpanduan(s0(i,j),smax_fszj(i,j));%对土壤水分进行判断
+                            s1(i,j)=s0(i,j)+pre(i,j)-net(i,j)-runoff(i,j);
+                            s1(i,j)=smpanduan(s1(i,j),smax_fszj(i,j));%对土壤水分进行判断
+                            et(i,j)=net(i,j);
+                        else
+                            smax(i,j)=smaxz(AW1(i,j),AW2(i,j),AW3(i,j),AW4(i,j),AW5(i,j),AW6(i,j),AW7(i,j),rdl(i,j));%生长季了
+                            smax(i,j)=smax(i,j)*rdl(i,j)*10;%转换成根系深度了，比例乘以根系深度单位为m，乘以1000转换成mm
+                            s0(i,j)=smpanduan(s0(i,j),smax(i,j));%对土壤水分进行判断
+                            pz(i,j)=psd(i,j)+0.04.*(5-et0(i,j).*kc(i,j));
+                            ks_dzq(i,j)=s0(i,j)/((1-pz(i,j))*smax(i,j));
+                            ks_dzq(i,j)=kspanduan(ks_dzq(i,j));
+                            et(i,j)=kc(i,j).*ks_dzq(i,j).*et0(i,j);
+                            s0(i,j)=smpanduan(s0(i,j),smax(i,j));%对土壤水分进行判断
+                            s1(i,j)=s0(i,j)+pre(i,j)-et(i,j)-runoff(i,j);
+                            s1(i,j)=smpanduan(s1(i,j),smax(i,j));
+                        end
+                    end
+                end
+            end
+            %filenameet=strcat('D:\qixiang\result\灌溉情景\基于scscn的灌溉情景下ET',int2str(year),'_',int2str(n),'.tif');
+            %geotiffwrite(filenameet,et,R,'GeoKeyDirectoryTag',info.GeoTIFFTags.GeoKeyDirectoryTag);
+            ETSUM=ETSUM+et;
+            %filenameet=strcat('D:\qixiang\result\灌溉情景\基于scscn的IRRI',int2str(year),'_',int2str(n),'.tif');
+            %geotiffwrite(filenameet,irrigation,R,'GeoKeyDirectoryTag',info.GeoTIFFTags.GeoKeyDirectoryTag);
+            s0=s1;
+     end
+           filename1=strcat('I:\雨养情景模拟ET\雨养情景的总ET',int2str(year),'.tif');
+           geotiffwrite(filename1,ETSUM,R,'GeoKeyDirectoryTag',info.GeoTIFFTags.GeoKeyDirectoryTag);
+           %filename1=strcat('D:\qixiang\基于作物比例的过程\result\水稻ks为1的基于作物比例过程的基于scscn法的总ET',int2str(year),'.tif');
+           %geotiffwrite(filename1,ETSUM,R,'GeoKeyDirectoryTag',info.GeoTIFFTags.GeoKeyDirectoryTag);
+end
+
